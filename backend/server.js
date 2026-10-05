@@ -1,0 +1,10 @@
+const express=require('express'),cors=require('cors'),fs=require('fs'),path=require('path'),jwt=require('jsonwebtoken');require('dotenv').config();
+const app=express(),PORT=process.env.PORT||5000,FILE=path.join(__dirname,'data/cards.json');app.use(cors());app.use(express.json({limit:'10mb'}));
+const read=()=>JSON.parse(fs.readFileSync(FILE,'utf8'));const write=x=>fs.writeFileSync(FILE,JSON.stringify(x,null,2));
+function auth(req,res,next){const h=req.headers.authorization||'';try{req.admin=jwt.verify(h.startsWith('Bearer ')?h.slice(7):'',process.env.JWT_SECRET);next()}catch{return res.status(401).json({message:'Authentication required'})}}
+app.post('/api/login',(req,res)=>{const {username,password}=req.body;if(username!==process.env.ADMIN_USERNAME||password!==process.env.ADMIN_PASSWORD)return res.status(401).json({message:'Invalid username or password'});res.json({token:jwt.sign({username,role:'admin'},process.env.JWT_SECRET,{expiresIn:'8h'})})});
+app.get('/api/cards',auth,(req,res)=>res.json(read().cards));app.get('/api/cards/:id',(req,res)=>{const c=read().cards.find(x=>x.id===req.params.id);c?res.json(c):res.status(404).json({message:'Card not found'})});
+app.post('/api/cards',auth,(req,res)=>{const {id,code}=req.body;if(!id||!code)return res.status(400).json({message:'ID and code are required'});const d=read();if(d.cards.some(x=>x.id===String(id)))return res.status(409).json({message:'Card ID already exists'});const c={id:String(id),code:String(code)};d.cards.push(c);write(d);res.status(201).json(c)});
+app.put('/api/cards/:id',auth,(req,res)=>{const d=read(),i=d.cards.findIndex(x=>x.id===req.params.id);if(i<0)return res.status(404).json({message:'Card not found'});d.cards[i].code=String(req.body.code||'');if(!d.cards[i].code)return res.status(400).json({message:'Code is required'});write(d);res.json(d.cards[i])});
+app.delete('/api/cards/:id',auth,(req,res)=>{const d=read(),n=d.cards.length;d.cards=d.cards.filter(x=>x.id!==req.params.id);if(n===d.cards.length)return res.status(404).json({message:'Card not found'});write(d);res.json({message:'Deleted'})});
+app.listen(PORT,()=>console.log(`API: http://localhost:${PORT}`));
